@@ -13,10 +13,16 @@ const WATCHLIST_QUERIES = [
   'EU hydrogen mechanism offtake collection results winners 2026',
   'EU hydrogen offtake matchmaking signed project 2026',
   'Germany H2 core network pipeline electrolyzer connected 2026',
-  // Sector breakout
-  'Bloom Energy "behind-the-meter" data center fuel cell deal 2026',
+  // Sector breakout — Data Centers (sharpened: contract/deal specific only)
+  'Bloom Energy data center "supply agreement" OR "contract signed" OR "offtake" 2026',
+  'Bloom Energy hyperscaler "fuel cell" deal signed Microsoft Google Amazon 2026',
+  'hydrogen fuel cell data center "behind-the-meter" contract signed 2026',
+  // Ports
   'hydrogen fuel cell port decarbonization Rotterdam "Long Beach" mandate 2026',
-  'green ammonia India ACME Onix commissioned 2026',
+  // India Green Ammonia — SECI pipeline
+  'ACME Solar green ammonia SECI offtake 2026',
+  'NTPC Green Energy green ammonia offtake commissioned 2026',
+  'India SECI green ammonia GAPA signed 2026',
   // China
   'China green hydrogen "five year plan" demonstration project subsidy 2026',
   // Red flags
@@ -38,9 +44,68 @@ const EU_OFFTAKE_QUERIES = [
 ];
 
 const SIGNAL_RULES = [
-  { type: '🟢 BANKABILITY', keywords: ['sales and purchase agreement', 'SPA signed', 'take-or-pay', '10-year', '15-year', '10 year', '15 year', 'binding contract', 'offtake agreement signed', 'commissioned', 'behind-the-meter', 'matched', 'awarded', 'selected'] },
-  { type: '🔵 REGIONAL TRIGGER', keywords: ['H2 core network', 'offtake mechanism', 'five year plan', 'demonstration project', 'port mandate', 'Rotterdam', 'Long Beach', 'Lingen', 'ACME', 'Onix', 'hydrogen mechanism', 'matchmaking'] },
-  { type: '🔴 RED FLAG', keywords: ['withdrawn', 'failed to sign', 'RFNBO failed', 'stalled', 'RED III criteria', 'project cancelled', 'collapsed', 'dead', 'delay', 'withdrawal'] },
+  {
+    type: '🟢 BANKABILITY',
+    keywords: [
+      'sales and purchase agreement',
+      'SPA signed',
+      'take-or-pay',
+      '10-year',
+      '15-year',
+      '10 year',
+      '15 year',
+      'binding contract',
+      'offtake agreement signed',
+      'commissioned',
+      'matched',
+      'awarded',
+      'selected',
+      // Data center specific — must be combined with action words (handled below)
+      'fuel cell supply agreement',
+      'fuel cell contract signed',
+      'fuel cell offtake',
+      'behind-the-meter contract',
+      'behind-the-meter agreement',
+      'behind-the-meter deal',
+      // India SECI
+      'GAPA signed',
+      'green ammonia purchase agreement',
+    ]
+  },
+  {
+    type: '🔵 REGIONAL TRIGGER',
+    keywords: [
+      'H2 core network',
+      'offtake mechanism',
+      'five year plan',
+      'demonstration project',
+      'port mandate',
+      'Rotterdam',
+      'Long Beach',
+      'Lingen',
+      'ACME',
+      'NTPC Green',
+      'hydrogen mechanism',
+      'matchmaking',
+      'SIGHT scheme',
+      'SECI',
+    ]
+  },
+  {
+    type: '🔴 RED FLAG',
+    keywords: [
+      'withdrawn',
+      'failed to sign',
+      'RFNBO failed',
+      'stalled',
+      'RED III criteria',
+      'project cancelled',
+      'collapsed',
+      'dead',
+      'delay',
+      'withdrawal',
+    ]
+  },
 ];
 
 function classifySignal(title: string, snippet: string): string {
