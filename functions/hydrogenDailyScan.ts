@@ -46,6 +46,7 @@ const EU_OFFTAKE_QUERIES = [
 const SIGNAL_RULES = [
   {
     type: '🟢 BANKABILITY',
+    category: 'Bankability',
     keywords: [
       'sales and purchase agreement',
       'SPA signed',
@@ -60,20 +61,19 @@ const SIGNAL_RULES = [
       'matched',
       'awarded',
       'selected',
-      // Data center specific — must be combined with action words (handled below)
       'fuel cell supply agreement',
       'fuel cell contract signed',
       'fuel cell offtake',
       'behind-the-meter contract',
       'behind-the-meter agreement',
       'behind-the-meter deal',
-      // India SECI
       'GAPA signed',
       'green ammonia purchase agreement',
     ]
   },
   {
     type: '🔵 REGIONAL TRIGGER',
+    category: 'Regional Trigger',
     keywords: [
       'H2 core network',
       'offtake mechanism',
@@ -93,6 +93,7 @@ const SIGNAL_RULES = [
   },
   {
     type: '🔴 RED FLAG',
+    category: 'Red Flag',
     keywords: [
       'withdrawn',
       'failed to sign',
@@ -108,14 +109,14 @@ const SIGNAL_RULES = [
   },
 ];
 
-function classifySignal(title: string, snippet: string): string {
+function classifySignal(title: string, snippet: string): { type: string; category: string } {
   const text = (title + ' ' + snippet).toLowerCase();
   for (const rule of SIGNAL_RULES) {
     if (rule.keywords.some(kw => text.includes(kw.toLowerCase()))) {
-      return rule.type;
+      return { type: rule.type, category: rule.category };
     }
   }
-  return '⚪ MONITOR';
+  return { type: '⚪ MONITOR', category: 'Monitor' };
 }
 
 async function searchNews(query: string, daysBack = 1): Promise<any[]> {
@@ -172,6 +173,7 @@ async function sendLongMessage(chatId: string, text: string) {
 
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
     const body = await req.json().catch(() => ({}));
     const chatId = body.chat_id || TELEGRAM_CHAT_ID;
     const scanType = body.scan_type || 'daily';
@@ -180,22 +182,22 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No chat_id provided' }, { status: 400 });
     }
 
-    const results: { signal: string; title: string; source: string; url: string; snippet: string }[] = [];
+    const results: { signal: string; category: string; title: string; source: string; url: string; snippet: string }[] = [];
     const seen = new Set<string>();
 
-    // Always run standard queries
     const queriesToRun = [...WATCHLIST_QUERIES];
 
-    // If EU offtake special scan, add EU-specific queries with wider time window
     const isEuScan = scanType === 'eu_offtake_results';
     if (isEuScan) {
       for (const q of EU_OFFTAKE_QUERIES) {
-        const articles = await searchNews(q, 3); // last 3 days for EU results
+        const articles = await searchNews(q, 3);
         for (const a of articles) {
           if (a.link && !seen.has(a.link)) {
             seen.add(a.link);
+            const classified = classifySignal(a.title, a.snippet || '');
             results.push({
-              signal: classifySignal(a.title, a.snippet || ''),
+              signal: classified.type,
+              category: classified.category,
               title: a.title,
               source: a.source || '',
               url: a.link,
@@ -211,8 +213,10 @@ Deno.serve(async (req) => {
       for (const a of articles) {
         if (a.link && !seen.has(a.link)) {
           seen.add(a.link);
+          const classified = classifySignal(a.title, a.snippet || '');
           results.push({
-            signal: classifySignal(a.title, a.snippet || ''),
+            signal: classified.type,
+            category: classified.category,
             title: a.title,
             source: a.source || '',
             url: a.link,
@@ -225,11 +229,32 @@ Deno.serve(async (req) => {
     const order: Record<string, number> = { '🔴 RED FLAG': 0, '🟢 BANKABILITY': 1, '🔵 REGIONAL TRIGGER': 2, '⚪ MONITOR': 3 };
     results.sort((a, b) => (order[a.signal] ?? 4) - (order[b.signal] ?? 4));
 
+    const today = new Date().toISOString().split('T')[0];
     const date = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
     const bankability = results.filter(r => r.signal === '🟢 BANKABILITY');
     const regional = results.filter(r => r.signal === '🔵 REGIONAL TRIGGER');
     const redFlags = results.filter(r => r.signal === '🔴 RED FLAG');
     const monitor = results.filter(r => r.signal === '⚪ MONITOR');
+
+    // Save non-monitor signals to database
+    const signalsToSave = [...bankability, ...redFlags, ...regional];
+    for (const item of signalsToSave) {
+      try {
+        await base44.asServiceRole.entities.HydrogenSignal.create({
+          scan_date: today,
+          category: item.category,
+          title: item.title,
+          summary: item.snippet.slice(0, 300),
+          source_url: item.url,
+          companies: item.source || '',
+          region: '',
+          contract_type: '',
+        });
+      } catch (_e) {
+        // non-blocking — don't fail the scan if DB save fails
+      }
+    }
 
     const header = isEuScan
       ? `🇪🇺 <b>EU OFFTAKE COLLECTION — SPECIAL RESULTS SCAN</b>\n📅 ${date}\n\n`
@@ -271,6 +296,7 @@ Deno.serve(async (req) => {
       ok: true,
       articles_found: results.length,
       scan_type: scanType,
+      signals_saved: signalsToSave.length,
       telegram: telegramResult,
       signals: { bankability: bankability.length, red_flags: redFlags.length, regional: regional.length, monitor: monitor.length }
     });
