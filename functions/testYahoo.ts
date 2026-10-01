@@ -1,6 +1,10 @@
 // Diagnostic: walks Yahoo's handshake one step at a time with plain fetch
 // (no yahoo-finance2) and reports the HTTP status of each step.
 // Run once or twice only — looping adds to the throttling being measured.
+//
+// Base44 (Deno): deployed as a backend function, input {"symbol": "TEVA"}.
+// Locally (Node >= 22.21):
+//   NODE_USE_ENV_PROXY=1 node functions/testYahoo.ts [SYMBOL]
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -28,15 +32,7 @@ async function step(name: string, url: string, headers: Record<string, string> =
   }
 }
 
-Deno.serve(async (req) => {
-  let symbol = 'TEVA';
-  try {
-    const body = await req.json();
-    if (body?.symbol) symbol = String(body.symbol).toUpperCase();
-  } catch {
-    // no input — use default
-  }
-
+async function runTest(symbol: string) {
   const results: Record<string, unknown>[] = [];
   const strip = ({ text, ...rest }: { text: string; [k: string]: unknown }) => rest;
 
@@ -97,5 +93,24 @@ Deno.serve(async (req) => {
     verdict = 'Mixed result — inspect per-step statuses and bodies.';
   }
 
-  return Response.json({ symbol, verdict, results, ranAt: new Date().toISOString() });
-});
+  return { symbol, verdict, results, ranAt: new Date().toISOString() };
+}
+
+declare const Deno: any;
+declare const process: any;
+
+if (typeof Deno !== 'undefined') {
+  Deno.serve(async (req: Request) => {
+    let symbol = 'TEVA';
+    try {
+      const body = await req.json();
+      if (body?.symbol) symbol = String(body.symbol).toUpperCase();
+    } catch {
+      // no input — use default
+    }
+    return Response.json(await runTest(symbol));
+  });
+} else {
+  const symbol = (process.argv[2] ?? 'TEVA').toUpperCase();
+  runTest(symbol).then((r) => console.log(JSON.stringify(r, null, 2)));
+}
